@@ -6,6 +6,7 @@ import android.net.ConnectivityManager;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.Message;
 import android.os.ResultReceiver;
 import android.util.Log;
@@ -34,6 +35,8 @@ public class WifiHotspot {
     private WifiManager wifiManager;
     private static final String TAG = "WifiHotspot";
     private Handler handler;
+    private Callback mCallback;
+    private final Handler workerHandler;
     private final Handler.Callback callback = new Handler.Callback() {
         @Override
         public boolean handleMessage(@NonNull Message msg) {
@@ -46,13 +49,18 @@ public class WifiHotspot {
                     Log.d(TAG, "设备连接成功");
                     break;
                 case SEND_MSG_SUCCSEE:
-                    Log.d(TAG, "发送消息成功:" + msg.getData().getString("MSG"));
+                    Log.d(TAG, "发送消息成功:");
                     break;
                 case SEND_MSG_ERROR:
                     Log.d(TAG, "发送消息失败:" + msg.getData().getString("MSG"));
                     break;
                 case GET_MSG:
-                    Log.d(TAG, "收到消息:" + msg.getData().getString("MSG"));
+                    if (msg.getData().getString("event") != null) {
+                        String event = msg.getData().getString("event");
+                        if (mCallback != null)
+                            mCallback.onEvent(event);
+                        Log.d(TAG, "收到event消息:" + event);
+                    }
                     break;
             }
             return false;
@@ -60,6 +68,9 @@ public class WifiHotspot {
     };
 
     private WifiHotspot() {
+        HandlerThread handlerThread = new HandlerThread("worker");
+        handlerThread.start();
+        workerHandler = new Handler(handlerThread.getLooper());
     }
 
     public static WifiHotspot getWifiHotspot() {
@@ -68,6 +79,12 @@ public class WifiHotspot {
 
     private static class WifiHotspotFactory {
         static WifiHotspot wifiHotspot = new WifiHotspot();
+    }
+
+    public void write(byte[] data) {
+        if (connectThread != null) {
+            workerHandler.post(() -> connectThread.write(data));
+        }
     }
 
     /**
@@ -89,7 +106,8 @@ public class WifiHotspot {
      */
     private static final int PORT = 54321;
 
-    public void init(Context context) {
+    public void init(Context context, Callback mCallback) {
+        this.mCallback = mCallback;
         handler = new Handler(callback);
         wifiManager = (WifiManager) context.getApplicationContext().getSystemService(WIFI_SERVICE);
         /**
@@ -122,6 +140,15 @@ public class WifiHotspot {
     }
 
     ConnectivityManager mConnectivityManager;
+
+    public void unInit() {
+        connectThread.interrupt();
+        listenerThread.interrupt();
+        workerHandler.getLooper().quit();
+        connectThread = null;
+        listenerThread = null;
+        mCallback = null;
+    }
 
 
     /**
@@ -241,4 +268,7 @@ public class WifiHotspot {
         Log.d(TAG, "热点已关闭");
     }
 
+    public interface Callback {
+        void onEvent(String event);
+    }
 }

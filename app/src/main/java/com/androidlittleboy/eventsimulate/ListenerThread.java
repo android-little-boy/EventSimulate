@@ -16,8 +16,8 @@ public class ListenerThread extends Thread {
 
     private ServerSocket serverSocket = null;
     private Handler handler;
-    private int     port;
-    private Socket  socket;
+    private int port;
+    private Socket socket;
 
     public ListenerThread(int port, Handler handler) {
         setName("ListenerThread");
@@ -34,6 +34,10 @@ public class ListenerThread extends Thread {
     @Override
     public void run() {
         while (true) {
+            if (isInterrupted()) {
+                cancel();
+                break;
+            }
             try {
                 Log.i("ListennerThread", "阻塞");
                 //阻塞，等待设备连接
@@ -47,6 +51,17 @@ public class ListenerThread extends Thread {
                 e.printStackTrace();
             }
         }
+    }
+
+    private void cancel() {
+        try {
+            serverSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        serverSocket = null;
+        socket = null;
+        handler = null;
     }
 
     public Socket getSocket() {
